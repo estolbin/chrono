@@ -1,0 +1,37 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "C/C++: g++.exe build active file",
+			"command": "C:\\MinGW\\bin\\g++.exe",
+			"args": [
+				"-fdiagnostics-color=always",
+				"${file}",
+				"-s",
+				"${fileDirname}\\libsqlite3.a",
+				"-o",
+				"${fileDirname}\\${fileBasenameNoExtension}.exe",
+				"-lgdi32",
+				"-mwindows",
+				"-static",
+				"-static-libgcc",
+				"-static-libstdc++",
+				"-lcomctl32",
+				"-lcomdlg32",
+				"-lpthread",
+				"-fpermissive",
+				"-march=x86-64"
+			],
+			"options": {
+				"cwd": "C:\\MinGW\\bin"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+			"detail": "compiler: C:\\MinGW\\bin\\g++.exe"
+		},
+
+	]
+}
