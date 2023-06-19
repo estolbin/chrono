@@ -4,11 +4,11 @@
 #include <string>
 #include <vector>
 #include "resource.h"
-#include "sqlite3.h"
+#include "Event.h"
+#include "SQLiteConnectionPool.h"
+#include "TimeHelper.h"
 
-#include <queue>
-#include <mutex>
-#include <condition_variable>
+
 
 #define WIN32_LEAN_AND_MEAN
 
@@ -24,21 +24,14 @@ static const char *const SELECT_ALL = "SELECT id,start_date, end_date, descripti
 class Event;
 static std::vector<Event> events = {};
 static Event *current_event = nullptr;
-
 static int TIMER_TIMEOUT = 20 * 60 * 1000;
-
 static HWND hList;
 static HWND hStatusBar;
-
 static sqlite3 *db = NULL;
 static char *errmsg = NULL;
 
-SYSTEMTIME g_sysTime;
-
 HFONT g_hFont = CreateFont(12, 0, 0, 0, 0, 0, 0, 0, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, _T("Arial"));
-
 LRESULT CALLBACK DialogProc(HWND, UINT, WPARAM, LPARAM);
-
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 static std::string GetCurrTime();
@@ -49,13 +42,8 @@ static std::string CurrDay;
 void RegisterDialogClass(HWND);
 void CreateDialogBox(HWND);
 
-enum class LoggingRunningState
-{
-    NotRunning,
-    Running
-};
-
 static LoggingRunningState logging_running_state = LoggingRunningState::NotRunning;
+static SQLiteConnectionPool pool("test.db");
 
 std::string GetStatus()
 {
@@ -72,70 +60,6 @@ std::string GetStatus()
     return status;
 }
 
-class Event
-{
-private:
-    std::string description;
-    std::string start_date;
-    std::string end_date;
-    int id;
-
-public:
-    Event(const char *description, const char *start_date, const char *end_date, int id) : description(description), start_date(start_date), end_date(end_date), id(id) {}
-    Event(const char *description, const char *start_date) : description(description), start_date(start_date) {}
-    Event(const char *start_date) : start_date(start_date) {}
-    std::string get_description() { return description; }
-    std::string get_start_date() { return start_date; }
-    std::string get_end_date() { return end_date; }
-    int get_id() { return id; }
-
-    void set_description(const TCHAR *description) { this->description = reinterpret_cast<const char *>(description); }
-    void set_end_date(const char *end_date) { this->end_date = end_date; }
-    void set_id(int id) { this->id = id; }
-};
-
-class SQLiteConnectionPool
-{
-public:
-    SQLiteConnectionPool(const std::string &filename, int pool_size = 5)
-        : filename_(filename)
-    {
-        for (int i = 0; i < pool_size; i++)
-        {
-            sqlite3 *db;
-            sqlite3_open(filename.c_str(), &db);
-            pool_.push(db);
-        }
-    }
-
-    sqlite3 *acquire()
-    {
-        std::unique_lock<std::mutex> lock(mutex_);
-        while (pool_.empty())
-        {
-            cv_.wait(lock);
-        }
-
-        sqlite3 *db = pool_.front();
-        pool_.pop();
-        return db;
-    }
-
-    void release(sqlite3 *db)
-    {
-        std::unique_lock<std::mutex> lock(mutex_);
-        pool_.push(db);
-        cv_.notify_one();
-    }
-
-private:
-    std::string filename_;
-    std::queue<sqlite3 *> pool_;
-    std::mutex mutex_;
-    std::condition_variable cv_;
-};
-
-static SQLiteConnectionPool pool("test.db");
 
 void display_event()
 {
@@ -280,14 +204,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case ID_START:
             {
                 current_event = new Event(GetCurrTime().c_str());
-                try
-                {
-                    KillTimer(hWnd, ID_TIMER);
-                }
-                catch (...)
-                {
-                    // do nothing
-                }
+                KillTimer(hWnd, ID_TIMER);
                 SetTimer(hWnd, ID_TIMER, TIMER_TIMEOUT, NULL);
                 logging_running_state = LoggingRunningState::Running;
                 SendMessage(hStatusBar, SB_SETTEXT, 0, (LPARAM)_T(GetStatus().c_str()));
@@ -371,10 +288,12 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
 
         CreateWindowW(L"Static", L"What?", WS_VISIBLE | WS_CHILD, 15, 10, 50, 30, hwnd, (HMENU)-1, NULL, NULL);
-        CreateWindowW(L"edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 55, 10, 250, 30, hwnd, (HMENU)600, NULL, NULL);
-        CreateWindowW(L"button", L"Ok", WS_VISIBLE | WS_CHILD, 200, 50, 80, 25, hwnd, (HMENU)1, NULL, NULL);
+        HWND edit = CreateWindowW(L"edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 55, 10, 250, 30, hwnd, (HMENU)600, NULL, NULL);
+        CreateWindowW(L"button", L"Ok", WS_VISIBLE | WS_CHILD , 200, 50, 80, 25, hwnd, (HMENU)1, NULL, NULL);
 
         EnumChildWindows(hwnd, (WNDENUMPROC)SetFont, (LPARAM)GetStockObject(DEFAULT_GUI_FONT));
+
+        if(SetForegroundWindow(hwnd)) SetFocus(edit);
     }
     break;
 
@@ -386,6 +305,12 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
             TCHAR s[255];
             GetDlgItemText(hwnd, 600, s, 255);
+
+            if (current_event == nullptr)
+            {
+                MessageBox(hwnd, _T("No event"), _T("Error"), MB_OK);
+                             //current_event = new Event(GetCurrTime().c_str());
+            }
 
             current_event->set_description(s);
             current_event->set_end_date(GetCurrTime().c_str());
@@ -410,17 +335,22 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             rc = sqlite3_finalize(stmt);
 
             pool.release(db);
-
             display_event();
 
-            current_event = nullptr;
-
+            if(logging_running_state == LoggingRunningState::Running)
+            {
+                current_event = new Event(GetCurrTime().c_str());
+            }
+            else
+            {
+                current_event = nullptr;
+            }
+ 
             DestroyWindow(hwnd);
         }
         break;
         }
         break;
-
     case WM_CLOSE:
         DestroyWindow(hwnd);
         break;
@@ -448,17 +378,3 @@ void CreateDialogBox(HWND hwnd)
                     NULL, NULL, g_hInst, NULL);
 }
 
-static std::string GetCurrTime()
-{
-    GetLocalTime(&g_sysTime);
-    std::string t = std::to_string(g_sysTime.wHour) + ":" + std::to_string(g_sysTime.wMinute);
-    return t;
-}
-
-static std::string GetCurrDay()
-{
-    GetLocalTime(&g_sysTime);
-    char dt[10];
-    wsprintf(dt, "%04d-%02d-%02d", g_sysTime.wYear, g_sysTime.wMonth, g_sysTime.wDay);
-    return std::string(dt);
-}
