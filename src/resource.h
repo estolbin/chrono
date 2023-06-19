@@ -13,4 +13,5 @@
 #define IDD_DIALOG 501
 #define ID_DESC 502
 
-#define ID_DATE 503
+#define IDD_DATE 503
+#define IDD_STATUS_TIMER 504
