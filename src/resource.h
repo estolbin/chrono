@@ -15,3 +15,5 @@
 
 #define IDD_DATE 503
 #define IDD_STATUS_TIMER 504
+
+#define IDI_ICON 300

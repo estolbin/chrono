@@ -11,8 +11,8 @@
 #define WIN32_LEAN_AND_MEAN
 
 static HINSTANCE g_hInst;
-const TCHAR g_szTitle[] = _T("My Window");
-const TCHAR g_szWindowClass[] = _T("MyWindowClass");
+const TCHAR g_szTitle[] = _T("20 min chronolog");
+const TCHAR g_szWindowClass[] = _T("20minChronolog");
 
 static const char *const CREATE_TABLE =
     "CREATE TABLE IF NOT EXISTS mytable (id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -139,7 +139,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
   HWND hWnd;
   MSG msg;
-  WNDCLASS wc;
+  WNDCLASSEX wc;
 
   g_hInst = hInstance;
 
@@ -153,13 +153,15 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   wc.cbClsExtra = 0;
   wc.cbWndExtra = 0;
   wc.hInstance = hInstance;
-  wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+  wc.hIcon = LoadIcon(NULL, MAKEINTRESOURCE(IDI_ICON));
+  wc.hIconSm =      (HICON)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON),IMAGE_ICON,16,16,0);
   wc.hCursor = LoadCursor(NULL, IDC_ARROW);
   wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
   wc.lpszMenuName = NULL;
   wc.lpszClassName = g_szWindowClass;
+  wc.cbSize = sizeof(WNDCLASSEX);
 
-  RegisterClass(&wc);
+  RegisterClassEx(&wc);
 
   hWnd = CreateWindow(g_szWindowClass, g_szTitle, WS_OVERLAPPEDWINDOW,
                       CW_USEDEFAULT, CW_USEDEFAULT, 630, 430, NULL, NULL,
@@ -178,6 +180,28 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   }
 
   return msg.wParam;
+}
+
+void StartLogging(HWND hWnd) {
+    if(current_event == nullptr) {
+        current_event = new Event(GetCurrTime().c_str());
+    }
+
+    KillTimer(hWnd, ID_TIMER);
+    KillTimer(hWnd, IDD_STATUS_TIMER);
+    ELAPSE_TIME = 20;
+    SetTimer(hWnd, ID_TIMER, TIMER_TIMEOUT, NULL);
+    SetTimer(hWnd, IDD_STATUS_TIMER, 60 * 1000, NULL);
+    logging_running_state = LoggingRunningState::Running;
+    SetStatusBar();
+}
+
+void StopLogging(HWND hWnd) {
+      CreateDialogBox(hWnd);
+      KillTimer(hWnd, ID_TIMER);
+      KillTimer(hWnd, IDD_STATUS_TIMER);
+      logging_running_state = LoggingRunningState::NotRunning;
+      SetStatusBar();
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
@@ -221,22 +245,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
   case WM_COMMAND: {
     switch (LOWORD(wParam)) {
     case ID_START: {
-      current_event = new Event(GetCurrTime().c_str());
-      KillTimer(hWnd, ID_TIMER);
-      ELAPSE_TIME = 20;
-      SetTimer(hWnd, ID_TIMER, TIMER_TIMEOUT, NULL);
-      SetTimer(hWnd, IDD_STATUS_TIMER, 60 * 1000, NULL);
-      logging_running_state = LoggingRunningState::Running;
-      SetStatusBar();
-
+        StartLogging(hWnd);
     } break;
 
     case ID_PAUSE:     {
-      CreateDialogBox(hWnd);
-      KillTimer(hWnd, ID_TIMER);
-      KillTimer(hWnd, IDD_STATUS_TIMER);
-      logging_running_state = LoggingRunningState::NotRunning;
-      SetStatusBar();
+        StopLogging(hWnd);
     } break;
     } 
     } break;
@@ -244,13 +257,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
     switch (wParam) {
     case ID_TIMER: {
       CreateDialogBox(hWnd);
-      KillTimer(hWnd, ID_TIMER);
-      KillTimer(hWnd, IDD_STATUS_TIMER);
-      SetTimer(hWnd, ID_TIMER, TIMER_TIMEOUT, NULL);
-      SetTimer(hWnd, IDD_STATUS_TIMER, 60 * 1000, NULL);
-
-      logging_running_state = LoggingRunningState::Running;
-      SetStatusBar();
+      StartLogging(hWnd);
     } break;
     case IDD_STATUS_TIMER: {
       ELAPSE_TIME--;
@@ -316,6 +323,8 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     EnumChildWindows(hwnd, (WNDENUMPROC)SetFont,
                      (LPARAM)GetStockObject(DEFAULT_GUI_FONT));
 
+    current_event->set_end_date(GetCurrTime().c_str());
+
     if (SetForegroundWindow(hwnd))
       SetFocus(edit);
   } break;
@@ -328,7 +337,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       GetDlgItemText(hwnd, 600, s, 255);
 
       current_event->set_description(s);
-      current_event->set_end_date(GetCurrTime().c_str());
+      //current_event->set_end_date(GetCurrTime().c_str());
 
       events.push_back(*current_event);
       // (day, start_date, end_date, description, id)
