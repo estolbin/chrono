@@ -31,11 +31,14 @@ static std::vector<Event> events = {};
 static Event *current_event = nullptr;
 static int TIMER_TIMEOUT = 20 * 60 * 1000;
 static int TIMER_INTERVAL = 60 * 1000;
+static int GLOBAL_TIMER = 480 * 60 * 1000; // 8 hours timer.
 static int ELAPSE_TIME = 20;
+static bool global_enabled = false;
 static HWND hList;
 static HWND hStatusBar;
 static sqlite3 *db = NULL;
 static char *errmsg = NULL;
+static WorkTime workTime = {8, 0};
 
 HFONT g_hFont = CreateFont(12, 0, 0, 0, 0, 0, 0, 0, ANSI_CHARSET,
                            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -53,7 +56,7 @@ void CreateDialogBox(HWND);
 
 static LoggingRunningState logging_running_state =
     LoggingRunningState::NotRunning;
-static SQLiteConnectionPool pool("test.db");
+static SQLiteConnectionPool pool("Cronolog.db");
 
 std::string GetStatus() {
   std::string status;
@@ -131,6 +134,13 @@ void SetStatusBar() {
   else
     wsprintf(buf, _T("%s."), GetStatus().c_str());
   SendMessage(hStatusBar, SB_SETTEXT, 0, (LPARAM)buf);
+
+if(global_enabled)
+    wsprintf(buf, _T("Work time left: %s"), GetWorkTimeStr(workTime).c_str());
+else
+    wsprintf(buf, _T("Work timer not running"));
+
+  SendMessage(hStatusBar, SB_SETTEXT, 1, (LPARAM)buf);
 }
 
 bool CALLBACK SetFont(HWND child, LPARAM font) {
@@ -197,6 +207,11 @@ void StartLogging(HWND hWnd) {
   KillTimer(hWnd, ID_TIMER);
   KillTimer(hWnd, IDD_STATUS_TIMER);
   ELAPSE_TIME = 20;
+
+  if(!global_enabled) {
+    global_enabled = true;
+    SetTimer(hWnd, IDD_WORK_TIMER, GLOBAL_TIMER, NULL);
+  }
   SetTimer(hWnd, ID_TIMER, TIMER_TIMEOUT, NULL);
   SetTimer(hWnd, IDD_STATUS_TIMER, 60 * 1000, NULL);
   logging_running_state = LoggingRunningState::Running;
@@ -209,6 +224,33 @@ void StopLogging(HWND hWnd) {
   KillTimer(hWnd, IDD_STATUS_TIMER);
   logging_running_state = LoggingRunningState::NotRunning;
   SetStatusBar();
+}
+
+void CopyToClipboard(HWND hWnd) {
+  
+  std::string str;
+  char buf[256] = {0};
+  str = "Date: " + CurrDay + "\n";
+  wsprintf(buf, "%5s\t%5s\t%50s", "Start", "End", "Description");
+  str += buf;
+  str += "\n";
+  str += "------------------------------------------------------------------\n";
+  for(auto &ev : events) {
+    wsprintf(buf, "%5s\t%5s\t%50s", ev.get_start_date().c_str(),
+             ev.get_end_date().c_str(), ev.get_description().c_str());
+    str += buf;
+    str += "\n";
+  }
+
+  const size_t len = strlen(str.c_str()) + 1;
+  HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len);
+  memcpy(GlobalLock(hMem), str.c_str(), len);
+  GlobalUnlock(hMem);
+  OpenClipboard(0);
+  EmptyClipboard();
+  SetClipboardData(CF_TEXT, hMem);
+  CloseClipboard();
+
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
@@ -225,11 +267,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
                                 WS_BORDER | WS_CHILD | WS_VISIBLE, 5, 5, 80, 25,
                                 hWnd, (HMENU)IDD_DATE, g_hInst, NULL);
     HWND hBtnStart = CreateWindow(_T("BUTTON"), _T("Start"),
-                                  WS_BORDER | WS_CHILD | WS_VISIBLE, 85, 5, 80,
+                                  WS_BORDER | WS_CHILD | WS_VISIBLE | WS_EX_STATICEDGE, 85, 5, 80,
                                   25, hWnd, (HMENU)ID_START, g_hInst, NULL);
     HWND hBtnPause = CreateWindow(_T("BUTTON"), _T("Stop"),
-                                  WS_BORDER | WS_CHILD | WS_VISIBLE, 165, 5, 80,
+                                  WS_BORDER | WS_CHILD | WS_VISIBLE | WS_EX_STATICEDGE, 170, 5, 80,
                                   25, hWnd, (HMENU)ID_PAUSE, g_hInst, NULL);
+    HWND hBtnStop = CreateWindow(_T("BUTTON"), _T("Clipboard"),
+                                  WS_BORDER | WS_CHILD | WS_VISIBLE | WS_EX_STATICEDGE, 255, 5, 80,
+                                  25, hWnd, (HMENU)ID_COPY, g_hInst, NULL);
+
 
     hList = CreateWindow(
         WC_LISTVIEW, _T(""),
@@ -246,11 +292,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
     hStatusBar = CreateWindowEx(0, STATUSCLASSNAME, _T(GetStatus().c_str()),
                                 SBARS_SIZEGRIP | WS_CHILD | WS_VISIBLE, 0, 0, 0,
                                 0, hWnd, (HMENU)950, g_hInst, NULL);
+    int widths[2] = {200, -1};
+    SendMessage(hStatusBar,SB_SETPARTS,2,(LPARAM)widths);
     EnumChildWindows(hWnd, (WNDENUMPROC)SetFont,
                      (LPARAM)GetStockObject(DEFAULT_GUI_FONT));
   } break;
   case WM_COMMAND: {
     switch (LOWORD(wParam)) {
+    case ID_COPY: {
+      CopyToClipboard(hWnd);
+    } break;
     case ID_START: {
       StartLogging(hWnd);
     } break;
@@ -268,6 +319,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
     } break;
     case IDD_STATUS_TIMER: {
       ELAPSE_TIME--;
+      DecreaseWorkTime(workTime, global_enabled);
       SetStatusBar();
     } break;
     }
@@ -305,6 +357,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
   } break;
   case WM_DESTROY:
     KillTimer(hWnd, ID_TIMER);
+    KillTimer(hWnd, IDD_STATUS_TIMER);
+    KillTimer(hWnd, IDD_WORK_TIMER);
     PostQuitMessage(0);
     break;
 
