@@ -9,6 +9,13 @@
 
 IDI_ICON ICON "icon.ico"
 
+ID_MENU MENU 
+BEGIN
+    POPUP "File"
+    BEGIN
+        MENUITEM "Exit", ID_EXIT
+    END
+END
 
 //
 // Dialog resources

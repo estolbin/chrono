@@ -2,6 +2,7 @@
 #define ID_START 101
 #define ID_PAUSE 102
 #define ID_LIST 103
+#define ID_EXIT 104
 
 #define IDS_FIRSTCOLUMN 200
 
@@ -19,3 +20,9 @@
 #define IDD_WORK_TIMER 506
 
 #define IDI_ICON 300
+
+#define TRAY_ICON 600
+#define ID_MENU 650
+
+#define IDS_APP_TITLE "Chrono"
+#define WM_TRAYMESSAGE (WM_USER + 1)

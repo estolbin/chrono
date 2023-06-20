@@ -7,11 +7,12 @@
 #include <tchar.h>
 #include <vector>
 #include <windows.h>
+#include "Tray.h"
 
 
 #define WIN32_LEAN_AND_MEAN
 
-static HINSTANCE g_hInst;
+HINSTANCE g_hInst;
 const TCHAR g_szTitle[] = _T("20 min chronolog");
 const TCHAR g_szWindowClass[] = _T("20minChronolog");
 
@@ -174,7 +175,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, 16, 16, 0);
   wc.hCursor = LoadCursor(NULL, IDC_ARROW);
   wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-  wc.lpszMenuName = NULL;
+  wc.lpszMenuName = MAKEINTRESOURCE(ID_MENU);
   wc.lpszClassName = g_szWindowClass;
   wc.cbSize = sizeof(WNDCLASSEX);
 
@@ -309,6 +310,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
     case ID_PAUSE: {
       StopLogging(hWnd);
     } break;
+    case ID_EXIT: {
+      TrayDeleteIcon(hWnd);
+      DestroyWindow(hWnd);
+    } break;
     }
   } break;
   case WM_TIMER: {
@@ -355,6 +360,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
     } break;
     }
   } break;
+  case WM_CLOSE:
+    TrayDrawIcon(hWnd);
+    ShowWindow(hWnd, SW_HIDE);
+    break;
+  case WM_TRAYMESSAGE:
+		{switch(lParam) {
+		case WM_LBUTTONDBLCLK:
+			ShowWindow(hWnd, SW_SHOW);
+      TrayDeleteIcon(hWnd);
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
+    } break;    
   case WM_DESTROY:
     KillTimer(hWnd, ID_TIMER);
     KillTimer(hWnd, IDD_STATUS_TIMER);
