@@ -8,6 +8,7 @@
 #include <vector>
 #include <windows.h>
 
+
 #define WIN32_LEAN_AND_MEAN
 
 static HINSTANCE g_hInst;
@@ -68,9 +69,11 @@ std::string GetStatus() {
 }
 
 void display_event() {
-  ListView_DeleteAllItems(hList);
 
-  events.clear();
+  ListView_DeleteAllItems(hList);
+  if(events.size() != 0) {
+    events.clear();
+  }
 
   if (CurrDay.empty()) {
     CurrDay = GetCurrDay();
@@ -87,21 +90,25 @@ void display_event() {
             sqlite3_column_int(stmt, 0));
     events.push_back(e);
   }
+
   sqlite3_finalize(stmt);
   pool.release(db);
 
   int i = 0;
-  for (auto &ev : events) {
-    LVITEM item;
-    item.pszText = (TCHAR *)ev.get_id();
-    item.iSubItem = 0;
-    item.iItem = i;
-    ListView_InsertItem(hList, &item);
+  if (events.size() == 0) {
+    return;
+  }
 
-    ListView_SetItemText(hList, i, 1, (TCHAR *)ev.get_start_date().c_str());
-    ListView_SetItemText(hList, i, 2, (TCHAR *)ev.get_end_date().c_str());
-    ListView_SetItemText(hList, i, 3, (TCHAR *)ev.get_description().c_str());
-    i++;
+  for (auto &ev : events) {
+      LVITEM item = {};
+      item.pszText = (TCHAR *)ev.get_id();
+      item.iSubItem = 0;
+      item.iItem = i;
+      ListView_InsertItem(hList, &item);
+      ListView_SetItemText(hList, i, 1, (TCHAR *)ev.get_start_date().c_str());
+      ListView_SetItemText(hList, i, 2, (TCHAR *)ev.get_end_date().c_str());
+      ListView_SetItemText(hList, i, 3, (TCHAR *)ev.get_description().c_str());
+      i++;
   }
 }
 
@@ -118,13 +125,12 @@ void AddCol(HWND hwnd, int ColWidth, TCHAR *Text, int iSubItem) {
 }
 
 void SetStatusBar() {
-      TCHAR buf[256];
-      if(logging_running_state == LoggingRunningState::Running)
-        wsprintf(buf, _T("%s. Elapse time: %d"), GetStatus().c_str(),
-                 ELAPSE_TIME);
-      else
-        wsprintf(buf, _T("%s."), GetStatus().c_str());
-      SendMessage(hStatusBar, SB_SETTEXT, 0, (LPARAM)buf);    
+  TCHAR buf[256];
+  if (logging_running_state == LoggingRunningState::Running)
+    wsprintf(buf, _T("%s. Elapse time: %d"), GetStatus().c_str(), ELAPSE_TIME);
+  else
+    wsprintf(buf, _T("%s."), GetStatus().c_str());
+  SendMessage(hStatusBar, SB_SETTEXT, 0, (LPARAM)buf);
 }
 
 bool CALLBACK SetFont(HWND child, LPARAM font) {
@@ -154,7 +160,8 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   wc.cbWndExtra = 0;
   wc.hInstance = hInstance;
   wc.hIcon = LoadIcon(NULL, MAKEINTRESOURCE(IDI_ICON));
-  wc.hIconSm =      (HICON)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON),IMAGE_ICON,16,16,0);
+  wc.hIconSm = (HICON)LoadImage(
+      GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, 16, 16, 0);
   wc.hCursor = LoadCursor(NULL, IDC_ARROW);
   wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
   wc.lpszMenuName = NULL;
@@ -183,25 +190,25 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 }
 
 void StartLogging(HWND hWnd) {
-    if(current_event == nullptr) {
-        current_event = new Event(GetCurrTime().c_str());
-    }
+  if (current_event == nullptr) {
+    current_event = new Event(GetCurrTime().c_str());
+  }
 
-    KillTimer(hWnd, ID_TIMER);
-    KillTimer(hWnd, IDD_STATUS_TIMER);
-    ELAPSE_TIME = 20;
-    SetTimer(hWnd, ID_TIMER, TIMER_TIMEOUT, NULL);
-    SetTimer(hWnd, IDD_STATUS_TIMER, 60 * 1000, NULL);
-    logging_running_state = LoggingRunningState::Running;
-    SetStatusBar();
+  KillTimer(hWnd, ID_TIMER);
+  KillTimer(hWnd, IDD_STATUS_TIMER);
+  ELAPSE_TIME = 20;
+  SetTimer(hWnd, ID_TIMER, TIMER_TIMEOUT, NULL);
+  SetTimer(hWnd, IDD_STATUS_TIMER, 60 * 1000, NULL);
+  logging_running_state = LoggingRunningState::Running;
+  SetStatusBar();
 }
 
 void StopLogging(HWND hWnd) {
-      CreateDialogBox(hWnd);
-      KillTimer(hWnd, ID_TIMER);
-      KillTimer(hWnd, IDD_STATUS_TIMER);
-      logging_running_state = LoggingRunningState::NotRunning;
-      SetStatusBar();
+  CreateDialogBox(hWnd);
+  KillTimer(hWnd, ID_TIMER);
+  KillTimer(hWnd, IDD_STATUS_TIMER);
+  logging_running_state = LoggingRunningState::NotRunning;
+  SetStatusBar();
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
@@ -245,14 +252,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
   case WM_COMMAND: {
     switch (LOWORD(wParam)) {
     case ID_START: {
-        StartLogging(hWnd);
+      StartLogging(hWnd);
     } break;
 
-    case ID_PAUSE:     {
-        StopLogging(hWnd);
+    case ID_PAUSE: {
+      StopLogging(hWnd);
     } break;
-    } 
-    } break;
+    }
+  } break;
   case WM_TIMER: {
     switch (wParam) {
     case ID_TIMER: {
@@ -281,20 +288,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam,
     LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
     lpMMI->ptMinTrackSize.x = 630;
     lpMMI->ptMinTrackSize.y = 430;
-  }
+  } break;
   case WM_NOTIFY: {
     LPNMHDR hdr = (LPNMHDR)lParam;
     switch (hdr->code) {
     case DTN_DATETIMECHANGE: {
       LPNMDATETIMECHANGE lpChange = (LPNMDATETIMECHANGE)lParam;
 
-      char dt[10];
+      char dt[10] = {};
       wsprintf(dt, "%04d-%02d-%02d", lpChange->st.wYear, lpChange->st.wMonth,
                lpChange->st.wDay);
       CurrDay = std::string(dt);
-      events.clear();
       display_event();
-    }
+    } break;
     }
   } break;
   case WM_DESTROY:
@@ -337,7 +343,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       GetDlgItemText(hwnd, 600, s, 255);
 
       current_event->set_description(s);
-      //current_event->set_end_date(GetCurrTime().c_str());
+      // current_event->set_end_date(GetCurrTime().c_str());
 
       events.push_back(*current_event);
       // (day, start_date, end_date, description, id)

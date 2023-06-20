@@ -13,7 +13,7 @@ static std::string GetCurrTime() {
 
 static std::string GetCurrDay() {
   GetLocalTime(&g_sysTime);
-  char dt[10];
+  char dt[10] = {0};
   wsprintf(dt, "%04d-%02d-%02d", g_sysTime.wYear, g_sysTime.wMonth,
            g_sysTime.wDay);
   return std::string(dt);
